@@ -8,14 +8,28 @@ class VerifyOTPScreen extends StatefulWidget {
 }
 
 class _VerifyOTPScreenState extends State<VerifyOTPScreen> {
-  final _otpController = TextEditingController();
+  List<TextEditingController> _controllers = List.generate(
+    6,
+    (index) => TextEditingController(),
+  );
+  List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
+  bool _isSubmitting = false;
 
   Future<void> _verifyOTP(String email) async {
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    String otp = _controllers.map((e) => e.text).join();
     var response = await http.post(
-      Uri.parse('https://your-server.com/verify-register-otp'),
+      Uri.parse('http://10.0.2.2:8080/api/v1/auth/activate-code'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'otp': _otpController.text}),
+      body: jsonEncode({'email': email, 'activationCode': otp}),
     );
+
+    setState(() {
+      _isSubmitting = false;
+    });
 
     if (response.statusCode == 200) {
       Navigator.pushReplacementNamed(context, '/login');
@@ -24,6 +38,25 @@ class _VerifyOTPScreenState extends State<VerifyOTPScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('OTP không đúng')));
     }
+  }
+
+  void _onOtpChanged(String value, int index, String email) {
+    if (value.isNotEmpty && index < 5) {
+      _focusNodes[index + 1].requestFocus();
+    }
+    if (value.isEmpty && index > 0) {
+      _focusNodes[index - 1].requestFocus();
+    }
+    if (_controllers.every((controller) => controller.text.isNotEmpty)) {
+      _verifyOTP(email);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controllers.forEach((controller) => controller.dispose());
+    _focusNodes.forEach((node) => node.dispose());
+    super.dispose();
   }
 
   @override
@@ -36,16 +69,27 @@ class _VerifyOTPScreenState extends State<VerifyOTPScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            Text('Nhập OTP gửi tới $email'),
-            TextField(
-              controller: _otpController,
-              decoration: InputDecoration(labelText: 'OTP'),
+            Text('Nhập mã OTP gửi tới $email'),
+            SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(6, (index) {
+                return SizedBox(
+                  width: 40,
+                  child: TextField(
+                    controller: _controllers[index],
+                    focusNode: _focusNodes[index],
+                    decoration: InputDecoration(counterText: ''),
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    maxLength: 1,
+                    onChanged: (value) => _onOtpChanged(value, index, email),
+                  ),
+                );
+              }),
             ),
             SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _verifyOTP(email),
-              child: Text('Xác nhận'),
-            ),
+            if (_isSubmitting) CircularProgressIndicator(),
           ],
         ),
       ),
